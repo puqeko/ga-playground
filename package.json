@@ -1,0 +1,22 @@
+{
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "fmt": "eslint src --ext js --fix",
+    "build": "parcel build src/main.html --no-source-maps",
+    "start": "parcel src/main.html"
+  },
+  "devDependencies": {
+    "eslint": "^8.0.1",
+    "eslint-config-standard": "^17.0.0",
+    "eslint-plugin-import": "^2.25.2",
+    "eslint-plugin-n": "^15.0.0",
+    "eslint-plugin-promise": "^6.0.0",
+    "parcel": "^2.8.3"
+  },
+  "dependencies": {
+    "ganja.js": "^1.0.204",
+    "three": "^0.150.1",
+    "tweakpane": "^3.1.7"
+  }
+}
