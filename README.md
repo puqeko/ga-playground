@@ -6,6 +6,8 @@ HTML, Javascript, Three.js.
 
 ## Requirements
 
+Make sure to use `git clone --recursive` as there are submodules.
+
 1. [Nodejs](https://nodejs.org/en/) runtime.
 2. Yarn package manager, install with `npm install -g yarn`.
 

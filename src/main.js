@@ -5,9 +5,9 @@ import { ViewPlugin } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
 import { parseScript, Syntax } from 'esprima'
 import { inline as translate, _Expand, _ExpandCoeff, _ctxerr, activeContexts } from './ganja-translator'
-import Algebra from 'ganja.js'
+import Algebra from '../libs/ganja.js/ganja'
 
-window.Algebra = Algebra // so that it's not trimmed out
+window.Algebra = Algebra // so that it's not pruned
 
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'r') {

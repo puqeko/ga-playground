@@ -19,7 +19,6 @@
     "@codemirror/lang-javascript": "^6.1.9",
     "codemirror": "^6.0.1",
     "esprima": "^4.0.1",
-    "ganja.js": "^1.0.204",
     "three": "^0.150.1",
     "tweakpane": "^3.1.7"
   }
