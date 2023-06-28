@@ -2,7 +2,84 @@ body {
   margin: 0;
   background-color: #f0f0f0;
   color: #444;
+
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  width: 100%;
+  position: absolute;
 }
+
+#view {
+  display: flex;
+  flex-basis: 47%;
+  overflow: auto;
+  flex-direction: column;
+}
+#main-div {
+  cursor: col-resize;
+}
+.div {
+  display: flex;
+  flex-basis: 0.2em;
+  background-color: rgb(238, 230, 219);
+  user-select: none;
+}
+
+#editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: auto;
+}
+#output {
+  flex-basis: 15%;
+  flex: 1;
+  font-family: monospace;
+  padding: 0.44em 0.4em;
+  overflow-y: auto;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  max-width: 100%;
+ }
+#code {
+  flex-basis: 85%;
+  overflow: auto;
+}
+#code > * {
+  width: 100%;
+  height: 100%;
+}
+#editor-div {
+  cursor: row-resize;
+}
+
+#view > * {
+  flex: 1;
+  width: 100%;
+  min-width: 33vw;
+  margin: auto;
+}
+
 a {
   color: #08f;
 }
+
+/*
+ * Codemirror code editor styling
+ *
+
+.cm-gutterElement {
+  padding: 0;
+  font-size: 0.85em;
+}
+.cm-scroller {
+  line-height: 1.4 !important;
+}
+.cm-gutterElement {
+  line-height: 1.294; (line-height)/(font-size em)
+}
+.cm-editor {
+  font-size: 0.9em;
+}
+*/

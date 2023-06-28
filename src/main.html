@@ -7,7 +7,34 @@
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
-		<div id="container"></div>
+		<!-- <div id="scene"></div>
+		<aside>
+			<div id="editor"></div>
+			<div id="output"></div>
+		</aside>
+		 -->
+		<main id="view"></main>
+		<div id="main-div" class="div"></div>
+		<section id="editor">
+			<article id="code"></article>
+			<div id="editor-div" class="div"></div>
+			<aside id="output"></aside>
+		</section>
+		<script>
+			const elMd = document.getElementById("main-div")
+			const elEd = document.getElementById("editor-div")
+			const elV = document.getElementById("view")
+			const elC = document.getElementById("code")
+			
+			const attachDragEvent = (target, fn) => {
+				let isDown = false
+				target.addEventListener("mousedown", ()=>isDown=true)
+				document.addEventListener("mouseup", ()=>isDown=false)
+				document.addEventListener("mousemove", (e)=> {if (isDown) fn(e)})
+			}
+			attachDragEvent(elMd, (e)=>elV.style['flex-basis'] = (e.clientX - elV.clientLeft - elMd.clientWidth/2) + 'px')
+			attachDragEvent(elEd, (e)=>elC.style['flex-basis'] = (e.clientY - elC.clientTop - elEd.clientHeight/2) + 'px')
+		</script>
 		<script async type="module" src="main.js"></script>
 	</body>
 </html>

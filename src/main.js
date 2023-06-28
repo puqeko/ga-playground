@@ -1,365 +1,175 @@
-import * as THREE from 'three'
+import { EditorView, basicSetup } from 'codemirror'
+import { foldState } from '@codemirror/language'
+import { javascript } from '@codemirror/lang-javascript'
+import { ViewPlugin } from '@codemirror/view'
+import { EditorState } from '@codemirror/state'
+import { parseScript, Syntax } from 'esprima'
+import { inline as translate, _Expand, _ExpandCoeff, _ctxerr, activeContexts } from './ganja-translator'
+import Algebra from 'ganja.js'
 
-import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
-import { Pane } from 'tweakpane'
+window.Algebra = Algebra // so that it's not trimmed out
 
-import Stats from 'three/examples/jsm/libs/stats.module.js'
-
-/// ///////////////////////////////////////////////////////////
-/// GUI
-
-const containerElement = document.getElementById('container')
-// create 3 panels for FPS, MS, and MB, and have them staggered down the left
-const stats = []
-for (let i = 0; i < 3; i++) {
-  const s = new Stats()
-  s.showPanel(i)
-  const offset = parseInt(s.domElement.firstElementChild.style.height) * i
-  s.domElement.style.top = offset.toString() + 'px'
-  document.body.appendChild(s.domElement)
-  stats.push(s)
-}
-
-const pane = new Pane({
-  title: 'Tangle 2D'
-})
-pane.element.style.userSelect = 'none' // stop label text being selected on dbl clk
-
-const GUI_PARAMS = {
-  mode: 'pm',
-  position: { x: 0, y: 0 }
-}
-const REFLECTIONS = {
-  x: false,
-  y: false,
-  xy: false,
-  yx: false
-}
-
-const ROTATIONS = {
-  '90': true,
-  '180': false,
-  '-90': false
-}
-
-const coordsGUI = pane.addInput(GUI_PARAMS, 'position', {
-  x: { min: -200, max: 200 },
-  y: { min: -200, max: 200 }
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+    e.preventDefault()
+    run({ force: true }) // force
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault()
+    saveState()
+  }
 })
 
-const NAMES = ['p1', 'p2', 'pm', 'pg']
+const view = document.getElementById('view')
 
-// {
-//   const opts = {}
-//   for (const key of NAMES) opts[key] = key
-//   pane.addInput(GUI_PARAMS, 'mode', {options: opts})
-// }
+const EXPRESSIONS = [] // find all ast nodes that have "Expression" in them
+for (const name in Syntax) if (name.includes('Expression')) EXPRESSIONS.push(name)
 
-{
-  const f0 = pane.addFolder({title: "Reflections"})
-  f0.on('change', (ev) => {
-    updateInterior()
-    needsRender = true
-  })
-  f0.addInput(REFLECTIONS, 'x')
-  f0.addInput(REFLECTIONS, 'y')
-  f0.addInput(REFLECTIONS, 'xy')
-  f0.addInput(REFLECTIONS, 'yx')
+const prep = (codeStr, errFn) => {
+  // Add return to last expression, return values in last declaration, remove blank lines + whitespace
+  // If there's a syntax error, call errFn if provided. Returns new string of code to become a function body
+  // Note: can still do strange stuff (not add return) bc of javascripts silly automatic semicolon insertion rules
+  let ast
+  try { ast = parseScript(codeStr, { range: true }) } catch (e) { (errFn ?? console.error)(e) }
+  if (!ast?.body?.length) return '' // Ensure non-empty array
+  const last = ast?.body.at(-1)
+  if (EXPRESSIONS.indexOf(last?.type) >= 0) { // Convert last expression to a return
+    codeStr = codeStr.slice(0, last.range[0]) + 'return ' + codeStr.slice(last.range[0], codeStr.length)
+  } else if (last?.type === Syntax.VariableDeclaration) { // Add return for last variable(s) decleared
+    if (last.declarations.length <= 1) codeStr += `\nreturn ${last.declarations.at(0).id.name}`
+    else codeStr += `\nreturn {${last.declarations.map(x => x.id.name).join(',')}}`
+  }
+  return codeStr.split('\n').map(x => x.trim()).filter(x => x !== '').join('\n')
 }
 
-{
-  const f0 = pane.addFolder({title: "Rotations"})
-  f0.on('change', (ev) => {
-    updateInterior()
-    needsRender = true
-  })
-  f0.addInput(ROTATIONS, '90')
-  f0.addInput(ROTATIONS, '180')
-  f0.addInput(ROTATIONS, '-90')
-}
-
-/// ///////////////////////////////////////////////////////////
-/// Web GL
-
-const renderer = new THREE.WebGLRenderer({ antialias: true })
-renderer.setPixelRatio(window.devicePixelRatio)
-renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.shadowMap.enabled = false
-containerElement.appendChild(renderer.domElement)
-
-/// ///////////////////////////////////////////////////////////
-/// setup 3d scene
-
-const scene = new THREE.Scene()
-scene.background = new THREE.Color(0xf0f0f0)
-scene.add(new THREE.AmbientLight(0xfafafa))
-
-const camera = new THREE.OrthographicCamera()
-{
-  const w = window.innerWidth / 2
-  const h = window.innerHeight / 2
-  camera.left = -w
-  camera.right = w
-  camera.top = h
-  camera.bottom = -h
-}
-camera.near = 1
-camera.far = 4000
-camera.position.set(0, 0, 750)
-camera.zoom = 1
-camera.updateProjectionMatrix() // must be caused when parameters change (eg camera.zoom)
-scene.add(camera)
-
-const SIZE = 100
-const planeGeo = new THREE.PlaneGeometry(2*SIZE, 2*SIZE)
-const planeMat = new THREE.MeshBasicMaterial({
-  color: 0xe0e0e0,
-  side: THREE.DoubleSide
-})
-
-
-// neighbours
-const tesses = [[0, 2*SIZE],[2*SIZE, 0],[0, -2*SIZE],[-2*SIZE, 0]]
-const planes = []
-for (const [x, y] of tesses) {
-  const plane = new THREE.Mesh(planeGeo, planeMat)
-  plane.position.x = x
-  plane.position.y = y
-  scene.add(plane)
-  planes.push(plane)
-}
-
-// dot
-const texture = new THREE.TextureLoader().load('images/duck.png', () => {
-  updateInterior()
-  needsRender = true
-})
-
-const duckPlane = new THREE.PlaneGeometry(20, 20)
-const duckMat = new THREE.MeshBasicMaterial({ map: texture, transparent: true })
-const duckCloneMat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: 0.2})
-const duck = new THREE.Mesh(duckPlane, duckMat)
-scene.add(duck)
-duck.position.x = 40
-duck.position.y = 20
-const cloneDuck = new THREE.Mesh(duckPlane, duckCloneMat)
-const cloneGroup = new THREE.Group()
-cloneGroup.add(cloneDuck)
-
-const applySymmetry = (cur, temp) => {
-  const g = new THREE.Group()
-  g.add(cur)
-  g.add(temp)
+const outputEl = document.getElementById('output')
+const clearOutput = () => { outputEl.textContent = '' }
+const clearView = () => { view.innerHTML = '' }
+const print = (s, end = '\n') => { outputEl.textContent += `${s}` + end }
+const graph = (...args) => {
+  const g = activeContexts.at(0)?.graph(...args)
+  view.appendChild(g)
+  g.style.width = g.style.height = ''
   return g
 }
-const applyMat = (cur, m) => {
-  const [[a, b], [c, d]] = m  // these are column vectors
-  const mat = new THREE.Matrix4();
-  mat.set(a, c, 0, 0,
-          b, d, 0, 0,
-          0, 0, 1, 0,
-          0, 0, 0, 1)
-  
-  cur.applyMatrix4(mat)
-  return cur
+const pushAlgebra = (...args) => {
+  // Ensure no duplicates of algebras for interoperability
+  const a = Algebra(...args)
+  const loc = activeContexts.find((x) => `${x.basis}` === `${a.basis}`)
+  if (loc) activeContexts.unshift(activeContexts.at(loc)) // reference same object again
+  else activeContexts.unshift(a)
+  return activeContexts.at(0)
+}
+const popAlgebra = () => activeContexts.shift()
+const getAlgebra = () => activeContexts.at(0)
+
+// Edit declearations and context to determine default behaviour and avaliable variables/functions
+const context = { print, graph, pushAlgebra, popAlgebra, getAlgebra, _Expand, _ExpandCoeff, _ctxerr }
+const declerations = `const{${Object.keys(context).join(',')}}=this;\npushAlgebra(2,0,1)` // default to 2D pga
+
+const resolveHangCheckAndSave = () => {
+  try {
+    saveState() // could fail if cache disabled, or cm does weird stuff
+    localStorage.setItem('ga-maybe-hung', 'false') // could fail if cache disabled
+  } catch (e) { console.warn(e) }
 }
 
-let cur
-let dups = []
-const updateInterior = () => {
-  if (cur) {
-    scene.remove(cur)
-    for (let i = 0; i < planes.length; i++) {
-      planes[i].remove(dups[i])
-    }
-    dups = []
-  }
-  cur = cloneGroup
-  cloneDuck.position.x = duck.position.x
-  cloneDuck.position.y = duck.position.y
-  
-  for (let i = 0; i < 1; i++) {
-    if (REFLECTIONS.x) {
-      const temp = cur.clone()
-      const m = [[-1, 0],[0, 1]]
-      applyMat(temp, m)
-      cur = applySymmetry(cur, temp)
-    }
-
-    if (REFLECTIONS.y) {
-      const temp = cur.clone()
-      const m = [[1, 0],[0, -1]]
-      applyMat(temp, m)
-      cur = applySymmetry(cur, temp)
-    }
-
-    if (REFLECTIONS.xy) {
-      const temp = cur.clone()
-      const m = [[0, 1],[1, 0]]
-      applyMat(temp, m)
-      cur = applySymmetry(cur, temp)
-    }
-
-    if (REFLECTIONS.yx) {
-      const temp = cur.clone()
-      const m = [[0, -1],[-1, 0]]
-      applyMat(temp, m)
-      cur = applySymmetry(cur, temp)
-    }
-
-    if (ROTATIONS['90']) {
-      const temp = cur.clone()
-      const m = [[0, 1],[-1, 0]]
-      applyMat(temp, m)
-      cur = applySymmetry(cur, temp)
-    }
-
-    if (ROTATIONS['180']) {
-      const temp = cur.clone()
-      const m = [[-1, 0],[0, -1]]
-      applyMat(temp, m)
-      cur = applySymmetry(cur, temp)
-    }
-
-    if (ROTATIONS['-90']) {
-      const temp = cur.clone()
-      const m = [[0, -1],[1, 0]]
-      applyMat(temp, m)
-      cur = applySymmetry(cur, temp)
-    }
-  }
-
-  scene.add(cur)
-
-  for (let i = 0; i < planes.length; i++) {
-    const d = cur.clone()
-    dups.push(d)
-    planes[i].add(d)
-  }
-
-  // todo
-  // calc eigenvectors thus reflection, rotation?
-  // where do glides come into this
-  // also surface symmetries vs valume symmetries
-  // 
-  // maybe try ga approach, should work this way too thou
-  //
-
-  // in file we need to know transformations for neighbour units
-  // we need to know symmetries, these could be
-  // - as a result of neighbours being self for some transform of it
-  // - because of a pattern we are designing for
-  // - because of surface symmetries we want
-  // - optionally, because of internal symmetries we want
-  // the last one is less important because it will not effect which
-  // units we can connect to, it will only impact if there are left and
-  // right handed versions (I'd think)
-  //
-  // ascii renderer for documenting code, don't do it
-  //
-  //       /----------/
-  //      /          /
-  //     /     +    /
-  //    /----------/
+let prev, hangCheckTimeout
+const run = (opts = { force: false }) => {
+  // Cancel hang check since we have been able to restart so things must be fine
+  clearTimeout(hangCheckTimeout)
+  hangCheckTimeout = null
+  try { localStorage.setItem('ga-maybe-hung', 'false') } catch (e) { console.warn(e) }
+  const codeStr = prep(editor?.state?.doc?.toString() ?? '', e => {
+    clearOutput() // from previous run
+    prev = null // ensure we rerun next time
+    print(`Syntax: ${e}`)
+  })
+  if (!codeStr.trim()) return // either error or no code to run
+  if (!opts?.force && prev === codeStr) return // don't run again unless forced
+  prev = codeStr
+  clearOutput() // clear console output
+  clearView()
+  // after running for x seconds, declear good run and save
+  try { localStorage.setItem('ga-maybe-hung', 'true') } catch (e) { console.warn(e) }
+  const codeTranslated = translate(codeStr) // include this here as may hang too
+  // if this can execute after x seconds (the main thread isn't blocked) then safe code to save
+  hangCheckTimeout = setTimeout(resolveHangCheckAndSave, 5_000)
+  activeContexts.splice(0, activeContexts.length) // clear contexts between runs
+  let fn
+  try { fn = new Function(declerations + '\n' + codeTranslated) } catch (e) { print(`Eval: ${e}`) } /* eslint-disable-line no-new-func */
+  // Execute code here. Might get in an infinite loop and lock the session!
+  if (fn) try { print(`${fn.apply(context)}`) } catch (e) { print(`Runtime: ${e}`) }
 }
 
-// Tool for moving points around
-const transformControl = new TransformControls(camera, renderer.domElement)
-transformControl.setSize(0.5)
-scene.add(transformControl)
-
-transformControl.addEventListener('change', () => {
-  const o = transformControl.object
-  if (o) {
-    const pos = o.position
-    GUI_PARAMS.position.x = pos.x = Math.min(SIZE, Math.max(-SIZE, pos.x))
-    GUI_PARAMS.position.y = pos.y = Math.min(SIZE, Math.max(-SIZE, pos.y))
-    coordsGUI.refresh()
-    updateInterior(pos.x, pos.y)
-    needsRender = true
+// In case we leave the page during the wait time, we don't want it to look like the page hung
+// Note: this doesn't trigger a save
+window.addEventListener('beforeunload', (event) => {
+  if (hangCheckTimeout) {
+    clearTimeout(hangCheckTimeout)
+    hangCheckTimeout = null
+    try { localStorage.setItem('ga-maybe-hung', 'false') } catch (e) { console.warn(e) } // could fail if cache disabled
   }
 })
 
-coordsGUI.on('change', (ev) => {
-  const { x, y } = ev.value
-  const pos = transformControl.object.position
-  pos.x = x
-  pos.y = y
-  needsRender = true
-})
-
-// window.addEventListener('keydown', (ev) => {
-//   if (ev.key === 'Backspace' || ev.key === 'Delete')
-// })
-
-/// ///////////////////////////////////////////////////////////
-/// mouse events
-
-{
-  const lastDownPos = new THREE.Vector2()
-  containerElement.addEventListener('pointerdown', (ev) => {
-    ev.preventDefault() // prevent GUI overlay from being selectable with double click
-    lastDownPos.x = ev.clientX
-    lastDownPos.y = ev.clientY
-  })
-
-  const lastUpPos = new THREE.Vector2()
-  const raycaster = new THREE.Raycaster()
-  containerElement.addEventListener('pointerup', (ev) => {
-    ev.preventDefault() // prevent GUI overlay from being selectable with double click
-    lastUpPos.x = ev.clientX
-    lastUpPos.y = ev.clientY
-
-    // click and release
-    if (lastDownPos.distanceTo(lastUpPos) !== 0) return
-    
-    raycaster.setFromCamera(mousePos, camera)
-
-    const hits = raycaster.intersectObjects([duck], true)
-    const activeObject = hits[0]?.object || null
-
-    if (activeObject && activeObject !== transformControl.object) {
-      // enable transform tool if click on top
-      transformControl.attach(activeObject)
-      needsRender = true
-    } else if (transformControl.object) {
-      // disable transform tool if click away
-      transformControl.detach()
-      needsRender = true
-    }
-  })
-
-  const mousePos = new THREE.Vector2()
-  containerElement.addEventListener('pointermove', (ev) => {
-    mousePos.x = (ev.clientX / window.innerWidth) * 2 - 1
-    mousePos.y = -(ev.clientY / window.innerHeight) * 2 + 1
-  })
+const saveState = () => { // cache
+  const json = JSON.stringify(editor.state.toJSON({ foldState }))
+  localStorage.setItem('ga-cm-state', json)
+  console.info('saved')
 }
 
-/// ///////////////////////////////////////////////////////////
-/// window events
+let undisturbedTimeout
+const waitTillUndisturbed = (fn) => {
+  if (undisturbedTimeout) clearTimeout(undisturbedTimeout)
+  undisturbedTimeout = setTimeout(() => { undisturbedTimeout = null; fn() }, 500)
+}
 
-window.addEventListener('resize', () => {
-  const w = window.innerWidth / 2
-  const h = window.innerHeight / 2
-  camera.left = -w
-  camera.right = w
-  camera.top = h
-  camera.bottom = -h
-  camera.updateProjectionMatrix()
-  renderer.setSize(window.innerWidth, window.innerHeight)
-  needsRender = true
-})
-
-/// ///////////////////////////////////////////////////////////
-/// updates
-
-let needsRender = true
-const update = () => {
-  if (needsRender) {
-    needsRender = false
-    renderer.render(scene, camera)
+const evalPlugin = ViewPlugin.fromClass(class {
+  update (update) {
+    if (update.docChanged) waitTillUndisturbed(() => run())
   }
-  requestAnimationFrame(update)
-}
-requestAnimationFrame(update) // start updating each frame
+})
+
+const extensions = [basicSetup, javascript(), evalPlugin]
+const parent = document.getElementById('code')
+
+let state
+try {
+  const jsonStr = localStorage.getItem('ga-cm-state') // could throw if cache disabled
+  const json = JSON.parse(jsonStr) // could throw if bad json
+  if (json) state = EditorState.fromJSON(json, { extensions }, { foldState }) // could throw if bad object
+} catch (e) { console.warn(e) }
+
+if (state) console.info('Loading from cache')
+/* eslint-disable-next-line no-unused-vars */
+const editor = new EditorView(state ? { state, parent } : { doc: 'let A = 1e1 + 1e2', extensions, parent })
+
+let runOnStart = true // should we run on start
+try { runOnStart = localStorage.getItem('ga-maybe-hung') !== 'true' } catch (e) { console.warn(e) }
+if (!runOnStart) {
+  console.log('recovered from possible hang')
+  try { localStorage.setItem('ga-maybe-hung', 'false') } catch (e) { console.warn(e) }
+} else run()
+
+/** ***** Tester code
+
+const E = getAlgebra()
+const point = (x,y) => 1e12 + -x*1e02 + y*1e01
+const A = point(1, 2)
+
+graph([
+  "",             // First label is used as title.
+  0x008844,       // Set darker green
+  A, "A",         // Render point A and label it.
+],{
+  grid        : true, // Display a grid
+  labels      : true, // Label the grid
+  lineWidth   : 3,    // Custom lineWidth (default=1)
+  pointRadius : 1,    // Custon point radius (default=1)
+  fontSize    : 1,    // Custom font size (default=1)
+  scale       : 1,    // Custom scale (default=1), mousewheel.
+})
+
+A
+
+*******/
