@@ -4,9 +4,9 @@
 export const activeContexts = []
 export const _ctxerr = () => {throw Error('Use `pushActive(Algebra(...))` to create context for 1e1 notation')}
 
-export const _Expand = (name, ...args) => (activeContexts.at(0) ?? _ctxerr())[name](...args)
+export const _Expand = (name, ...args) => (activeContexts.at(-1) ?? _ctxerr())[name](...args)
 export const _ExpandCoeff = (idx, b) => {
-  const ctx = activeContexts.at(0) ?? _ctxerr()
+  const ctx = activeContexts.at(-1) ?? _ctxerr()
   return ctx.Coeff(ctx.basis.indexOf(idx), b)  // requires basis property added to the class returned by ganja.js
 }
 
@@ -59,7 +59,8 @@ export const inline = (intxt) => {
   // String templates (limited support - needs fundamental changes.).
   tok=tok.map(t=>(t[0]==1 && t[1][0]=='`')?[1,t[1].replace(/\$\{(.*?)\}/g,a=>'${'+inline(a.slice(2,-1)).toString().match(/return \((.*)\)/)[1]+'}')]:t)  
   // We support two syntaxes, standard js or if you pass in a text, asciimath.
-  var syntax = (intxt instanceof Function)?[[['.Normalized','Normalize',2],['.Length','Length',2]],[['~','Conjugate',1],['!','Dual',1]],[['**','Pow',0,1]],[['^','Wedge'],['&','Vee'],['<<','LDot']],[['*','Mul'],['/','Div']],[['|','Dot']],[['>>>','sw',0,1]],[['-','Sub'],['+','Add']],[['%','%']],[['==','eq'],['!=','neq'],['<','lt'],['>','gt'],['<=','lte'],['>=','gte']]]
+  // intxt instanceof Function
+  var syntax = (true)?[[['.Normalized','Normalize',2],['.Length','Length',2]],[['~','Conjugate',1],['!','Dual',1]],[['**','Pow',0,1]],[['^','Wedge'],['&','Vee'],['<<','LDot']],[['*','Mul'],['/','Div']],[['|','Dot']],[['>>>','sw',0,1]],[['-','Sub'],['+','Add']],[['%','%']],[['==','eq'],['!=','neq'],['<','lt'],['>','gt'],['<=','lte'],['>=','gte']]]
     :[[['pi','Math.PI'],['sin','Math.sin']],[['ddot','this.Reverse'],['tilde','this.Involute'],['hat','this.Conjugate'],['bar','this.Dual']],[['^','Pow',0,1]],[['^^','Wedge'],['*','LDot']],[['**','Mul'],['/','Div']],[['-','Sub'],['+','Add']],[['<','lt'],['>','gt'],['<=','lte'],['>=','gte']]]
   // For asciimath, some fixed translations apply (like pi->Math.PI) etc ..
   tok=tok.map(t=>(t[0]!=6)?t:[].concat.apply([],syntax).filter(x=>x[0]==t[1]).length?[6,[].concat.apply([],syntax).filter(x=>x[0]==t[1])[0][1]]:t)

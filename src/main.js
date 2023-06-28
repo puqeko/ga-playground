@@ -46,22 +46,24 @@ const outputEl = document.getElementById('output')
 const clearOutput = () => { outputEl.textContent = '' }
 const clearView = () => { view.innerHTML = '' }
 const print = (s, end = '\n') => { outputEl.textContent += `${s}` + end }
+const getAlgebra = () => activeContexts.at(-1)
 const graph = (...args) => {
-  const g = activeContexts.at(0)?.graph(...args)
+  const g = getAlgebra()?.graph(...args)
   view.appendChild(g)
   g.style.width = g.style.height = ''
   return g
 }
+const deadContexts = []
 const pushAlgebra = (...args) => {
   // Ensure no duplicates of algebras for interoperability
   const a = Algebra(...args)
-  const loc = activeContexts.find((x) => `${x.basis}` === `${a.basis}`)
-  if (loc) activeContexts.unshift(activeContexts.at(loc)) // reference same object again
-  else activeContexts.unshift(a)
-  return activeContexts.at(0)
+  let existing = activeContexts.find((x) => `${x.basis}` === `${a.basis}`)
+  if (!existing) existing = deadContexts.find((x) => `${x.basis}` === `${a.basis}`)
+  if (!existing) existing = a
+  activeContexts.push(existing) // reference same object again if possible
+  return activeContexts.at(-1)
 }
-const popAlgebra = () => activeContexts.shift()
-const getAlgebra = () => activeContexts.at(0)
+const popAlgebra = () => { const p = activeContexts.pop(); deadContexts.push(p); return p }
 
 // Edit declearations and context to determine default behaviour and avaliable variables/functions
 const context = { print, graph, pushAlgebra, popAlgebra, getAlgebra, _Expand, _ExpandCoeff, _ctxerr }
@@ -96,6 +98,7 @@ const run = (opts = { force: false }) => {
   // if this can execute after x seconds (the main thread isn't blocked) then safe code to save
   hangCheckTimeout = setTimeout(resolveHangCheckAndSave, 5_000)
   activeContexts.splice(0, activeContexts.length) // clear contexts between runs
+  deadContexts.splice(0, deadContexts.length)
   let fn
   try { fn = new Function(declerations + '\n' + codeTranslated) } catch (e) { print(`Eval: ${e}`) } /* eslint-disable-line no-new-func */
   // Execute code here. Might get in an infinite loop and lock the session!
