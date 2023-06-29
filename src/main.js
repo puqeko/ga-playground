@@ -130,36 +130,36 @@ const evalPlugin = ViewPlugin.fromClass(class {
   }
 })
 
+const TEMPLATE = `\
+const point = (x,y) => !(1e0 + x*1e1 + y*1e2);
+const A = point(1, 1.2);
+const B = point(-0.5, 0);
+
+graph([
+  "",             // First label is used as title.
+  0x008844,       // Set darker green
+  A, "A",         // Render point A and label it.
+  B, "B",
+  A & B, "A & B",
+  0x4466AA,       // Blue
+  (A & B) ^ 1e1   // Y Intercept
+],{
+  grid        : true, // Display a grid
+  labels      : true, // Label the grid
+  lineWidth   : 3,    // Custom lineWidth (default=1)
+  pointRadius : 1,    // Custon point radius (default=1)
+  fontSize    : 1,    // Custom font size (default=1)
+  scale       : 1,    // Custom scale (default=1), mousewheel.
+});
+
+print("A = " + A);
+print("B = " + B);
+
+// Display last expression
+(A & B) ^ 1e1;`
+
 // Initalise codemirror
 {
-  const TEMPLATE = `\
-  const point = (x,y) => !(1e0 + x*1e1 + y*1e2);
-  const A = point(1, 1.2);
-  const B = point(-0.5, 0);
-
-  graph([
-    "",             // First label is used as title.
-    0x008844,       // Set darker green
-    A, "A",         // Render point A and label it.
-    B, "B",
-    A & B, "A & B",
-    0x4466AA,       // Blue
-    (A & B) ^ 1e1   // Y Intercept
-  ],{
-    grid        : true, // Display a grid
-    labels      : true, // Label the grid
-    lineWidth   : 3,    // Custom lineWidth (default=1)
-    pointRadius : 1,    // Custon point radius (default=1)
-    fontSize    : 1,    // Custom font size (default=1)
-    scale       : 1,    // Custom scale (default=1), mousewheel.
-  });
-
-  print("A = " + A);
-  print("B = " + B);
-
-  // Display last expression
-  (A & B) ^ 1e1;`
-
   const extensions = [basicSetup, javascript(), evalPlugin]
   const parent = document.getElementById('code')
   let state
