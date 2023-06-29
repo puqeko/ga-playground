@@ -12,7 +12,7 @@ Some nice features:
 * The script is re-evaluated automatically and progress is saved to your local browser cache incase the page accidentally reloads
 * Can use the `print` and `graph` functions to output multiple messages to the console and show multiple graphs respectively.
 
-Use `pushAlgebra` and `popAlgebra` to change the currently active Algebra 'mode'. They take the same arguments as the `Algebra` factory from `ganja.js` but there might be some support holes. The current algebra is accessiable via `getAlgebra` but direct access is probably not needed. This helps with the scoping and consistancy issues stated above but also helps with interoperability by ensuring each algebra produced by the factory is a singleton. This all probably comes at a slight performance cost that I am yet to care about.
+Use `pushAlgebra` and `popAlgebra` to change the currently active Algebra 'mode'. They take the same arguments as the `Algebra` factory from `ganja.js` but there might be some support holes. The default is 2D PGA, equivilent to `Algebra(2, 0, 1)`. The current algebra object is accessiable via `getAlgebra` but direct access is probably not needed. This helps with the scoping and consistancy issues stated above but also helps with interoperability by ensuring each algebra produced by the factory is a singleton. This all probably comes at a slight performance cost that I am yet to care about.
 
 Known issues:
 
