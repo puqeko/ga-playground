@@ -133,6 +133,34 @@ const evalPlugin = ViewPlugin.fromClass(class {
   }
 })
 
+const TEMPLATE = `\
+const point = (x,y) => !(1e0 + x*1e1 + y*1e2);
+const A = point(1, 1.2);
+const B = point(-0.5, 0);
+
+graph([
+  "",             // First label is used as title.
+  0x008844,       // Set darker green
+  A, "A",         // Render point A and label it.
+  B, "B",
+  A & B, "A & B",
+  0x4466AA,       // Blue
+  (A & B) ^ 1e1   // Y Intercept
+],{
+  grid        : true, // Display a grid
+  labels      : true, // Label the grid
+  lineWidth   : 3,    // Custom lineWidth (default=1)
+  pointRadius : 1,    // Custon point radius (default=1)
+  fontSize    : 1,    // Custom font size (default=1)
+  scale       : 1,    // Custom scale (default=1), mousewheel.
+});
+
+print("A = " + A);
+print("B = " + B);
+
+// Display last expression
+(A & B) ^ 1e1;`
+
 const extensions = [basicSetup, javascript(), evalPlugin]
 const parent = document.getElementById('code')
 
@@ -145,34 +173,11 @@ try {
 
 if (state) console.info('Loading from cache')
 /* eslint-disable-next-line no-unused-vars */
-const editor = new EditorView(state ? { state, parent } : { doc: 'let A = 1e1 + 1e2', extensions, parent })
+const editor = new EditorView(state ? { state, parent } : { doc: TEMPLATE, extensions, parent })
 
 let runOnStart = true // should we run on start
 try { runOnStart = localStorage.getItem('ga-maybe-hung') !== 'true' } catch (e) { console.warn(e) }
 if (!runOnStart) {
-  console.log('recovered from possible hang')
+  console.info('recovered from possible hang')
   try { localStorage.setItem('ga-maybe-hung', 'false') } catch (e) { console.warn(e) }
 } else run()
-
-/** ***** Tester code
-
-const E = getAlgebra()
-const point = (x,y) => 1e12 + -x*1e02 + y*1e01
-const A = point(1, 2)
-
-graph([
-  "",             // First label is used as title.
-  0x008844,       // Set darker green
-  A, "A",         // Render point A and label it.
-],{
-  grid        : true, // Display a grid
-  labels      : true, // Label the grid
-  lineWidth   : 3,    // Custom lineWidth (default=1)
-  pointRadius : 1,    // Custon point radius (default=1)
-  fontSize    : 1,    // Custom font size (default=1)
-  scale       : 1,    // Custom scale (default=1), mousewheel.
-})
-
-A
-
-*******/
