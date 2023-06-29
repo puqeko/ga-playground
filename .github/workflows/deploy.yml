@@ -46,15 +46,6 @@ jobs:
         with:
           # Path of the directory containing the static assets.
           path: dist/
-      
-      # - name: Deploy GitHub Pages site
-      #   uses: actions/deploy-pages@v2.0.1
 
-      - name: Deploy to gh-pages
-        uses: JamesIves/github-pages-deploy-action@v4
-        with:
-          branch: gh-pages
-          folder: dist
-          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
-          single-commit: true
-          git-config-name: GitHub Actions
+      - name: Deploy GitHub Pages site
+        uses: actions/deploy-pages@v2.0.2
