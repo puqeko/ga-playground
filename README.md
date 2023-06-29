@@ -1,8 +1,10 @@
 # GA Playground
 
-A simplifed alternative to the excellent [coffeeshop](https://github.com/enkimute/ganja.js) which attempts to make the scripting experience less weird. The entire script is translated instead of the individual function source, meaning we don't have eval issues that rely on the `window` object for access variables outside the function scope and we have consistent behaviour between runs.
+A simplifed alternative to the excellent [coffeeshop](https://github.com/enkimute/ganja.js) which attempts to make the scripting experience less weird. The entire script is translated instead of the individual function source, meaning we don't have eval issues that rely on the `window` object to access variables outside the function scope and we have consistent behaviour between runs.
 
 This is intended as a toy for helping get my head around [Geometric Algebra](https://bivector.net).
+
+![Screenshot of application](images/screenshot.png)
 
 Some nice features:
 
@@ -16,6 +18,7 @@ Known issues:
 
 * A lock situation occurs if you manage to save the current script to cache and it contains an infinate loop, hence the locking script will be run even on page refresh. The solution is to clear the browser cache. Hopefully this is hard to do.
 * Javascripts silly automatic semi-colon insertion rules are responsible for some non-intuitive behaviour with the automatic return insertion. Just use semi-colons.
+* Inline comments are sometimes interpreted as the div `/` operator. The parser could be rewritten using ast instread of regex.
 
 ## Requirements
 
