@@ -6,21 +6,13 @@ import { EditorState } from '@codemirror/state'
 import { parseScript, Syntax } from 'esprima'
 import { inline as translate, _Expand, _ExpandCoeff, _ctxerr, activeContexts } from './ganja-translator'
 import Algebra from '../libs/ganja.js/ganja'
-
-window.Algebra = Algebra // so that it's not pruned
-
-document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
-    e.preventDefault()
-    run({ force: true }) // force
-  }
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-    e.preventDefault()
-    saveState()
-  }
-})
+import { DblClickDetector, DragDetector } from './click'
 
 const view = document.getElementById('view')
+let editor
+
+////////////////////////////////////////////
+/// Script execution
 
 const EXPRESSIONS = [] // find all ast nodes that have "Expression" in them
 for (const name in Syntax) if (name.includes('Expression')) EXPRESSIONS.push(name)
@@ -76,7 +68,18 @@ const resolveHangCheckAndSave = () => {
   } catch (e) { console.warn(e) }
 }
 
-let prev, hangCheckTimeout
+// In case we leave the page during the wait time, we don't want it to look like the page hung
+// Note: this doesn't trigger a save
+let hangCheckTimeout
+window.addEventListener('beforeunload', (event) => {
+  if (hangCheckTimeout) {
+    clearTimeout(hangCheckTimeout)
+    hangCheckTimeout = null
+    try { localStorage.setItem('ga-maybe-hung', 'false') } catch (e) { console.warn(e) } // could fail if cache disabled
+  }
+})
+
+let prev
 const run = (opts = { force: false }) => {
   // Cancel hang check since we have been able to restart so things must be fine
   clearTimeout(hangCheckTimeout)
@@ -105,15 +108,9 @@ const run = (opts = { force: false }) => {
   if (fn) try { print(`${fn.apply(context)}`) } catch (e) { print(`Runtime: ${e}`) }
 }
 
-// In case we leave the page during the wait time, we don't want it to look like the page hung
-// Note: this doesn't trigger a save
-window.addEventListener('beforeunload', (event) => {
-  if (hangCheckTimeout) {
-    clearTimeout(hangCheckTimeout)
-    hangCheckTimeout = null
-    try { localStorage.setItem('ga-maybe-hung', 'false') } catch (e) { console.warn(e) } // could fail if cache disabled
-  }
-})
+
+////////////////////////////////////////////
+/// Codemirror
 
 const saveState = () => { // cache
   const json = JSON.stringify(editor.state.toJSON({ foldState }))
@@ -133,51 +130,88 @@ const evalPlugin = ViewPlugin.fromClass(class {
   }
 })
 
-const TEMPLATE = `\
-const point = (x,y) => !(1e0 + x*1e1 + y*1e2);
-const A = point(1, 1.2);
-const B = point(-0.5, 0);
+// Initalise codemirror
+{
+  const TEMPLATE = `\
+  const point = (x,y) => !(1e0 + x*1e1 + y*1e2);
+  const A = point(1, 1.2);
+  const B = point(-0.5, 0);
 
-graph([
-  "",             // First label is used as title.
-  0x008844,       // Set darker green
-  A, "A",         // Render point A and label it.
-  B, "B",
-  A & B, "A & B",
-  0x4466AA,       // Blue
-  (A & B) ^ 1e1   // Y Intercept
-],{
-  grid        : true, // Display a grid
-  labels      : true, // Label the grid
-  lineWidth   : 3,    // Custom lineWidth (default=1)
-  pointRadius : 1,    // Custon point radius (default=1)
-  fontSize    : 1,    // Custom font size (default=1)
-  scale       : 1,    // Custom scale (default=1), mousewheel.
-});
+  graph([
+    "",             // First label is used as title.
+    0x008844,       // Set darker green
+    A, "A",         // Render point A and label it.
+    B, "B",
+    A & B, "A & B",
+    0x4466AA,       // Blue
+    (A & B) ^ 1e1   // Y Intercept
+  ],{
+    grid        : true, // Display a grid
+    labels      : true, // Label the grid
+    lineWidth   : 3,    // Custom lineWidth (default=1)
+    pointRadius : 1,    // Custon point radius (default=1)
+    fontSize    : 1,    // Custom font size (default=1)
+    scale       : 1,    // Custom scale (default=1), mousewheel.
+  });
 
-print("A = " + A);
-print("B = " + B);
+  print("A = " + A);
+  print("B = " + B);
 
-// Display last expression
-(A & B) ^ 1e1;`
+  // Display last expression
+  (A & B) ^ 1e1;`
 
-const extensions = [basicSetup, javascript(), evalPlugin]
-const parent = document.getElementById('code')
+  const extensions = [basicSetup, javascript(), evalPlugin]
+  const parent = document.getElementById('code')
+  let state
+  try {
+    const jsonStr = localStorage.getItem('ga-cm-state') // could throw if cache disabled
+    const json = JSON.parse(jsonStr) // could throw if bad json
+    if (json) state = EditorState.fromJSON(json, { extensions }, { foldState }) // could throw if bad object
+  } catch (e) { console.warn(e) }
 
-let state
-try {
-  const jsonStr = localStorage.getItem('ga-cm-state') // could throw if cache disabled
-  const json = JSON.parse(jsonStr) // could throw if bad json
-  if (json) state = EditorState.fromJSON(json, { extensions }, { foldState }) // could throw if bad object
-} catch (e) { console.warn(e) }
+  if (state) console.info('Loading from cache')
+  editor = new EditorView(state ? { state, parent } : { doc: TEMPLATE, extensions, parent })
 
-if (state) console.info('Loading from cache')
-/* eslint-disable-next-line no-unused-vars */
-const editor = new EditorView(state ? { state, parent } : { doc: TEMPLATE, extensions, parent })
+  let runOnStart = true // should we run on start
+  try { runOnStart = localStorage.getItem('ga-maybe-hung') !== 'true' } catch (e) { console.warn(e) }
+  if (!runOnStart) {
+    console.info('recovered from possible hang')
+    try { localStorage.setItem('ga-maybe-hung', 'false') } catch (e) { console.warn(e) }
+  } else run()
+}
 
-let runOnStart = true // should we run on start
-try { runOnStart = localStorage.getItem('ga-maybe-hung') !== 'true' } catch (e) { console.warn(e) }
-if (!runOnStart) {
-  console.info('recovered from possible hang')
-  try { localStorage.setItem('ga-maybe-hung', 'false') } catch (e) { console.warn(e) }
-} else run()
+////////////////////////////////////////////
+/// Window logic
+
+// Mouse events for resizing the main view, code, and output panels
+{
+  const elMd = document.getElementById('main-div')
+  const elEd = document.getElementById('editor-div')
+  const elV = document.getElementById('view')
+  const elC = document.getElementById('code')
+
+  const ddMd = new DragDetector(elMd) // view resize
+  ddMd.on('dragging', e => { elV.style['flex-basis'] = (e.clientX - elV.clientLeft - elMd.clientWidth / 2) + 'px' })
+  const ddEd = new DragDetector(elEd) // output resize
+  ddEd.on('dragging', e => { elC.style['flex-basis'] = (e.clientY - elC.clientTop - elEd.clientHeight / 2) + 'px' })
+
+  const dblClickMd = new DblClickDetector(elMd) // double click to snap resize view
+  dblClickMd.on('dblclick', e => {
+    const minWidth = document.body.clientWidth * 0.33  // side 1/3
+    const initWidth = document.body.clientWidth * 0.47  // middle 1/2
+    if (view.clientWidth > initWidth + 2 || Math.abs(view.clientWidth - minWidth) < 2) elV.style['flex-basis'] = initWidth + 'px'
+    else elV.style['flex-basis'] = minWidth + 'px'  // else snap to smallest view size before the code window overlaps it
+  })
+}
+
+// full window keyboard shortcuts (codemirror editor will have it's own)
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+    e.preventDefault()
+    run({ force: true }) // force
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault()
+    saveState()
+  }
+})
