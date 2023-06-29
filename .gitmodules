@@ -1,0 +1,3 @@
+[submodule "libs/ganja.js"]
+	path = libs/ganja.js
+	url = https://github.com/puqeko/ganja.js.git
