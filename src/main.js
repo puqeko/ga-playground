@@ -6,7 +6,7 @@ import { EditorState } from '@codemirror/state'
 import { parseScript, Syntax } from 'esprima'
 import { inline as translate, _Expand, _ExpandCoeff, _ctxerr, activeContexts } from './ganja-translator'
 import Algebra from '../libs/ganja.js/ganja'
-import { DblClickDetector, DragDetector } from './click'
+import { DblClickDetector, DragDetector, WaitTillUndisturbedFor } from './util'
 
 const view = document.getElementById('view')
 let editor
@@ -118,15 +118,16 @@ const saveState = () => { // cache
   console.info('saved')
 }
 
-let undisturbedTimeout
-const waitTillUndisturbed = (fn) => {
-  if (undisturbedTimeout) clearTimeout(undisturbedTimeout)
-  undisturbedTimeout = setTimeout(() => { undisturbedTimeout = null; fn() }, 500)
-}
+
 
 const evalPlugin = ViewPlugin.fromClass(class {
+  constructor() {
+    this.w = new WaitTillUndisturbedFor(500)
+    this.w.on('timeout', run)
+  }
+
   update (update) {
-    if (update.docChanged) waitTillUndisturbed(() => run())
+    if (update.docChanged) this.w.disturb()
   }
 })
 
@@ -185,22 +186,45 @@ print("B = " + B);
 
 // Mouse events for resizing the main view, code, and output panels
 {
-  const elMd = document.getElementById('main-div')
-  const elEd = document.getElementById('editor-div')
+  const getWidth = () => document.body.clientWidth || document.documentElement.clientWidth || window.innerWidth;
   const elV = document.getElementById('view')
   const elC = document.getElementById('code')
+  let json
+  try {
+    const jsonStr = localStorage.getItem('ga-div-state') // could throw if cache disabled
+    json = JSON.parse(jsonStr) // could throw if bad json
+  } catch (e) { console.warn(e) }
+  if (json?.mainDiv && !isNaN(json.mainDiv)) elV.style['flex-basis'] = json.mainDiv * getWidth() + 'px'
+  if (json?.editorDiv && !isNaN(json.editorDiv)) elC.style['flex-basis'] = json.editorDiv * getWidth() + 'px'
 
+  const w = new WaitTillUndisturbedFor(500)
+  w.on('timeout', () => {
+    if (!json) json = {}
+    json.mainDiv = parseFloat(elV.style['flex-basis']) / getWidth()
+    json.editorDiv = parseFloat(elC.style['flex-basis']) / getWidth()
+    try { localStorage.setItem('ga-div-state', JSON.stringify(json)) } catch (e) { console.warn(e) }
+  })
+
+  const elMd = document.getElementById('main-div')
+  const elEd = document.getElementById('editor-div')
   const ddMd = new DragDetector(elMd) // view resize
-  ddMd.on('dragging', e => { elV.style['flex-basis'] = (e.clientX - elV.clientLeft - elMd.clientWidth / 2) + 'px' })
   const ddEd = new DragDetector(elEd) // output resize
-  ddEd.on('dragging', e => { elC.style['flex-basis'] = (e.clientY - elC.clientTop - elEd.clientHeight / 2) + 'px' })
+  ddMd.on('dragging', e => { 
+    elV.style['flex-basis'] = (e.clientX - elV.clientLeft - elMd.clientWidth / 2) + 'px';
+    w.disturb()
+  })
+  ddEd.on('dragging', e => {
+    elC.style['flex-basis'] = (e.clientY - elC.clientTop - elEd.clientHeight / 2) + 'px'
+    w.disturb()
+  })
 
   const dblClickMd = new DblClickDetector(elMd) // double click to snap resize view
   dblClickMd.on('dblclick', e => {
-    const minWidth = document.body.clientWidth * 0.33  // side 1/3
-    const initWidth = document.body.clientWidth * 0.47  // middle 1/2
+    const minWidth = getWidth() * 0.33  // side 1/3
+    const initWidth = getWidth() * 0.47  // middle 1/2
     if (view.clientWidth > initWidth + 2 || Math.abs(view.clientWidth - minWidth) < 2) elV.style['flex-basis'] = initWidth + 'px'
-    else elV.style['flex-basis'] = minWidth + 'px'  // else snap to smallest view size before the code window overlaps it
+    else elV.style['flex-basis'] = minWidth + 'px';  // else snap to smallest view size before the code window overlaps it
+    w.disturb()
   })
 }
 

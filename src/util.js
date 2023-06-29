@@ -30,3 +30,16 @@ export class DblClickDetector extends EventEmitter {
     })
   }
 }
+
+export class WaitTillUndisturbedFor extends EventEmitter {
+  constructor (timeout) {
+    super()
+    this.undisturbedTimeout = null
+    this.timeout = timeout
+  }
+
+  disturb () {
+    if (this.undisturbedTimeout) clearTimeout(this.undisturbedTimeout)
+    this.undisturbedTimeout = setTimeout(() => { this.undisturbedTimeout = null; this.emit('timeout') }, this.timeout)
+  }
+}
