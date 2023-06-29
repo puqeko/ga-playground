@@ -224,7 +224,7 @@ print("B = " + B);
     const initWidth = getWidth() * 0.47  // middle 1/2
     if (view.clientWidth > initWidth + 2 || Math.abs(view.clientWidth - minWidth) < 2) elV.style['flex-basis'] = initWidth + 'px'
     else elV.style['flex-basis'] = minWidth + 'px';  // else snap to smallest view size before the code window overlaps it
-    w.disturb()
+    w.trigger()
   })
 }
 

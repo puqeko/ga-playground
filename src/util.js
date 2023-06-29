@@ -42,4 +42,9 @@ export class WaitTillUndisturbedFor extends EventEmitter {
     if (this.undisturbedTimeout) clearTimeout(this.undisturbedTimeout)
     this.undisturbedTimeout = setTimeout(() => { this.undisturbedTimeout = null; this.emit('timeout') }, this.timeout)
   }
+
+  trigger () {
+    if (this.undisturbedTimeout) clearTimeout(this.undisturbedTimeout)
+    this.emit('timeout')
+  }
 }
