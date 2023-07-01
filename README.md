@@ -12,13 +12,11 @@ Some nice features:
 * The script is re-evaluated automatically and progress is saved to your local browser cache incase the page accidentally reloads
 * Can use the `print` and `graph` functions to output multiple messages to the console and show multiple graphs respectively.
 
-Use `pushAlgebra` and `popAlgebra` to change the currently active Algebra 'mode'. They take the same arguments as the `Algebra` factory from `ganja.js` but there might be some support holes. The default is 2D PGA, equivilent to `Algebra(2, 0, 1)`. The current algebra object is accessiable via `getAlgebra` but direct access is probably not needed. This helps with the scoping and consistancy issues stated above but also helps with interoperability by ensuring each algebra produced by the factory is a singleton. This all probably comes at a slight performance cost that I am yet to care about.
+Use `context_manager.pushAlgebra(...)` and `context_manager.popAlgebra()` to change the currently active Algebra 'mode'. They take the same arguments as the `Algebra` factory from `ganja.js` but there might be some support holes. The default is 2D PGA, equivilent to `Algebra(2, 0, 1)`. The current algebra object is accessiable via `context_manager.getAlgebra()` but direct access is probably not needed. This helps with the scoping and consistancy issues stated above but also helps with interoperability by ensuring each algebra produced by the factory is a singleton. This all probably comes at a slight performance cost that I am yet to care about.
 
 Known issues:
 
 * A lock situation occurs if you manage to save the current script to cache and it contains an infinate loop, hence the locking script will be run even on page refresh. The solution is to clear the browser cache. Hopefully this is hard to do.
-* Javascripts silly automatic semi-colon insertion rules are responsible for some non-intuitive behaviour with the automatic return insertion. Just use semi-colons.
-* Inline comments are sometimes interpreted as the div `/` operator. The parser could be rewritten using ast instread of regex.
 
 ## Requirements
 
