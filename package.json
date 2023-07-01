@@ -7,6 +7,9 @@
     "start": "parcel src/index.html"
   },
   "devDependencies": {
+    "@parcel/core": "^2.9.2",
+    "@parcel/optimizer-data-url": "^2.9.3",
+    "@parcel/transformer-inline-string": "2.9.3",
     "eslint": "^8.0.1",
     "eslint-config-standard": "^17.0.0",
     "eslint-plugin-import": "^2.25.2",
@@ -15,14 +18,14 @@
     "events": "^3.1.0",
     "os-browserify": "^0.3.0",
     "parcel": "^2.8.3",
+    "path-browserify": "^1.0.0",
     "process": "^0.11.10"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.1.9",
     "codemirror": "^6.0.1",
-    "esprima": "^4.0.1",
     "recast": "^0.23.2",
-    "three": "^0.150.1",
-    "tweakpane": "^3.1.7"
+    "source-map": "^0.7.4",
+    "stacktrace-js": "^2.0.2"
   }
 }

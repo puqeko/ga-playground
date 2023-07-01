@@ -116,12 +116,8 @@ export const transpile = (sourceStr, errFn = console.error) => {
     }
   })
 
-  // convert last expression statement into a return statement
   const bod = ast.program.body
+  // Convert last expression statement into a return statement
   if (N.ExpressionStatement.check(bod.at(-1))) bod.push(B.returnStatement(bod.pop().expression))
-
-  const result = recast.print(ast, { sourceMapName: 'source.min.js' })
-
-  // console.log(result.code); // Resulting string of code.
-  return result
+  return recast.print(ast, { sourceMapName: 'script.js' })
 }

@@ -3,11 +3,23 @@ import { foldState } from '@codemirror/language'
 import { javascript } from '@codemirror/lang-javascript'
 import { ViewPlugin } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
+import * as StackTrace from 'stacktrace-js'
+import { SourceMapConsumer } from 'source-map'
 
 import * as Algebra from '../libs/ganja.js/ganja'
+import mappingsDataUrl from 'data-url:../libs/source-map/mappings.wasm'
 
 import { transpile } from './transpile'
 import { DblClickDetector, DragDetector, WaitTillUndisturbedFor } from './util'
+
+let isMapConsumerReady = false
+// https://github.com/parcel-bundler/parcel/issues/4405
+fetch(mappingsDataUrl)
+  .then(r => r.arrayBuffer())
+  .then(b => {
+    SourceMapConsumer.initialize({ 'lib/mappings.wasm': b })
+    if (b instanceof ArrayBuffer) isMapConsumerReady = true
+  })
 
 const view = document.getElementById('view')
 let editor
@@ -56,22 +68,10 @@ export class ContextManager {
   }
 }
 
-// TODO:
-// console.log(result.map); // JSON source map.
-// var SourceMapConsumer = require("source-map").SourceMapConsumer;
-// var smc = new SourceMapConsumer(result.map);
-// console.log(smc.originalPositionFor({
-//   line: 3,
-//   column: 15
-// })); // { source: 'source.js',
-//      //   line: 2,
-//      //   column: 10,
-//      //   name: null }
-
 const outputEl = document.getElementById('output')
 const clearOutput = () => { outputEl.textContent = '' }
 const getOutput = () => outputEl.textContent
-const setOutput = (s) => outputEl.textContent = s
+const setOutput = (s) => { outputEl.textContent = s }
 const clearView = () => { view.innerHTML = '' }
 const print = (s, end = '\n') => { outputEl.textContent += `${s}` + end }
 
@@ -85,7 +85,10 @@ const graph = (...args) => {
 }
 
 const context = { print, graph, context_manager: cm, _$: cm.map.bind(cm) } // expose these variables in script
-const declerations = `const{${Object.keys(context).join(',')}}=this;\ncontext_manager.pushAlgebra(2,0,1)` // default to 2D pga
+const declerations = `\
+//# sourceURL=script.js
+const{${Object.keys(context).join(',')}}=this;
+context_manager.pushAlgebra(2,0,1);\n` // default to 2D pga, must have trailing newline
 
 const resolveHangCheckAndSave = () => {
   try {
@@ -106,26 +109,55 @@ const cancelHangCheckTimeout = () => {
 let hangCheckTimeout
 window.addEventListener('beforeunload', e => { cancelHangCheckTimeout() })
 
+// Count number of lines
+const countNl = (s) => [...s.matchAll(/\n/g)].length
+// Measure number of lines needed for function decleration and other declerations added to source
+const SOURCE_OFFSET = countNl((new Function('$')).toString().split('$')[0]) + countNl(declerations) /* eslint-disable-line no-new-func */
+const withSourceLocation = (e, map, fn) => {
+  // Get position in source file accounting for ast transformations and other added lines
+  StackTrace.fromError(e).then(frames => {
+    const { lineNumber, columnNumber } = frames.at(0)
+    if (!map || !isMapConsumerReady) {
+      fn(e, lineNumber - SOURCE_OFFSET, columnNumber)
+      return
+    }
+    SourceMapConsumer.with(map, null, consumer => {
+      const { line, column } = consumer.originalPositionFor({ line: lineNumber - SOURCE_OFFSET, column: columnNumber })
+      fn(e, line, column)
+    })
+  })
+}
+
 let prev
 const run = (opts = { force: false }) => {
   const outputText = getOutput()
-  setOutput("...")
-  cancelHangCheckTimeout()  // if we are able to run then we didn't hang last time
+  setOutput('...')
+  cancelHangCheckTimeout() // if we are able to run then we didn't hang last time
   // Cancel hang check since we have been able to restart so things must be fine
   let didError = false
-  const codeStr = transpile(editor?.state?.doc?.toString() ?? '', e => {
+  const result = transpile(editor?.state?.doc?.toString() ?? '', e => {
     clearOutput()
     prev = null // ensure we rerun next time
-    setOutput(`Syntax: ${e}`)
+    print(`SyntaxError: ${e.description}`)
+    if (e.lineNumber) print(`On line ${e.lineNumber}`, '')
+    if (e.column) print(` at column ${e.column}`)
     didError = true
-  })?.code
-  if (didError) return  // handled already
+  })
+  if (didError) return // handled already
+  const codeStr = result?.code
   if (!codeStr?.trim()) { setOutput('Nothing to run'); return }
-  if (!opts?.force && prev === codeStr) { setOutput(textContent); return } // don't run again unless forced
+  if (!opts?.force && prev === codeStr) { setOutput(outputText); return } // don't run again unless forced
   prev = codeStr
   // if this can execute after x seconds (the main thread isn't blocked) then safe code to save
   let fn
-  try { fn = new Function(declerations + '\n' + codeStr) } catch (e) { setOutput(`Eval: ${e}`); return } /* eslint-disable-line no-new-func */
+  try { fn = new Function(declerations + codeStr) } catch (e) { /* eslint-disable-line no-new-func */
+    print(`${e.name}: ${e.message}`)
+    withSourceLocation(e, result?.map, (e, line, column) => {
+      if (line) print(`On line ${line}`, '')
+      if (column) print(` at column ${column}`)
+    })
+    return
+  }
   // Execute code here. Might get in an infinite loop and lock the session!
   // after running for x seconds, declear good run and save
   try { localStorage.setItem('ga-maybe-hung', 'true') } catch (e) { console.warn(e) }
@@ -133,7 +165,15 @@ const run = (opts = { force: false }) => {
   clearOutput()
   clearView()
   cm.clear() // clear contexts between runs
-  if (fn) try { print(`${fn.apply(context)}`) } catch (e) { print(`Runtime: ${e}`) }
+  if (fn) {
+    try { print(`${fn.apply(context)}`) } catch (e) {
+      print(`${e.name}: ${e.message}`)
+      withSourceLocation(e, result?.map, (e, line, column) => {
+        if (line) print(`On line ${line}`, '')
+        if (column) print(` at column ${column}`)
+      })
+    }
+  }
 }
 
 /// /////////////////////////////////////////
