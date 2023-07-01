@@ -11,7 +11,7 @@ export class DragDetector extends EventEmitter {
 }
 
 export class DblClickDetector extends EventEmitter {
-  constructor (target, timeout=2000) {
+  constructor (target, timeout = 2000) {
     super()
     this.timeout = timeout
     this.x = this.y = null
@@ -25,8 +25,7 @@ export class DblClickDetector extends EventEmitter {
       if (e.clientX !== this.x || e.clientY !== this.y) { this.nclicks = 0; return }
       if (this.to) clearTimeout(this.to)
       this.nclicks += 1
-      if (this.nclicks === 2) { this.emit('dblclick', e); this.nclicks = 0 }
-      else this.to = setTimeout(() => { this.nclicks = 0 }, this.timeout) // max two seconds between releases
+      if (this.nclicks === 2) { this.emit('dblclick', e); this.nclicks = 0 } else this.to = setTimeout(() => { this.nclicks = 0 }, this.timeout) // max two seconds between releases
     })
   }
 }

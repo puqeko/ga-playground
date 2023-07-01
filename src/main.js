@@ -3,114 +3,14 @@ import { foldState } from '@codemirror/language'
 import { javascript } from '@codemirror/lang-javascript'
 import { ViewPlugin } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
-import { parseScript, Syntax } from 'esprima'
-import { inline as translate, _Expand, _ExpandCoeff, _ctxerr, activeContexts } from './ganja-translator'
-import Algebra from '../libs/ganja.js/ganja'
+
+import * as Algebra from '../libs/ganja.js/ganja'
+
+import { transpile } from './transpile'
 import { DblClickDetector, DragDetector, WaitTillUndisturbedFor } from './util'
 
 const view = document.getElementById('view')
 let editor
-
-////////////////////////////////////////////
-/// Script execution
-
-const EXPRESSIONS = [] // find all ast nodes that have "Expression" in them
-for (const name in Syntax) if (name.includes('Expression')) EXPRESSIONS.push(name)
-
-const prep = (codeStr, errFn) => {
-  // Add return to last expression, return values in last declaration, remove blank lines + whitespace
-  // If there's a syntax error, call errFn if provided. Returns new string of code to become a function body
-  // Note: can still do strange stuff (not add return) bc of javascripts silly automatic semicolon insertion rules
-  let ast
-  try { ast = parseScript(codeStr, { range: true }) } catch (e) { (errFn ?? console.error)(e) }
-  if (!ast?.body?.length) return '' // Ensure non-empty array
-  const last = ast?.body.at(-1)
-  if (EXPRESSIONS.indexOf(last?.type) >= 0) { // Convert last expression to a return
-    codeStr = codeStr.slice(0, last.range[0]) + 'return ' + codeStr.slice(last.range[0], codeStr.length)
-  } else if (last?.type === Syntax.VariableDeclaration) { // Add return for last variable(s) decleared
-    if (last.declarations.length <= 1) codeStr += `\nreturn ${last.declarations.at(0).id.name}`
-    else codeStr += `\nreturn {${last.declarations.map(x => x.id.name).join(',')}}`
-  }
-  return codeStr.split('\n').map(x => x.trim()).filter(x => x !== '').join('\n')
-}
-
-const outputEl = document.getElementById('output')
-const clearOutput = () => { outputEl.textContent = '' }
-const clearView = () => { view.innerHTML = '' }
-const print = (s, end = '\n') => { outputEl.textContent += `${s}` + end }
-const getAlgebra = () => activeContexts.at(-1)
-const graph = (...args) => {
-  const g = getAlgebra()?.graph(...args)
-  view.appendChild(g)
-  g.style.width = g.style.height = ''
-  return g
-}
-const deadContexts = []
-const pushAlgebra = (...args) => {
-  // Ensure no duplicates of algebras for interoperability
-  const a = Algebra(...args)
-  let existing = activeContexts.find((x) => `${x.basis}` === `${a.basis}`)
-  if (!existing) existing = deadContexts.find((x) => `${x.basis}` === `${a.basis}`)
-  if (!existing) existing = a
-  activeContexts.push(existing) // reference same object again if possible
-  return activeContexts.at(-1)
-}
-const popAlgebra = () => { const p = activeContexts.pop(); deadContexts.push(p); return p }
-
-// Edit declearations and context to determine default behaviour and avaliable variables/functions
-const context = { print, graph, pushAlgebra, popAlgebra, getAlgebra, _Expand, _ExpandCoeff, _ctxerr }
-const declerations = `const{${Object.keys(context).join(',')}}=this;\npushAlgebra(2,0,1)` // default to 2D pga
-
-const resolveHangCheckAndSave = () => {
-  try {
-    saveState() // could fail if cache disabled, or cm does weird stuff
-    localStorage.setItem('ga-maybe-hung', 'false') // could fail if cache disabled
-  } catch (e) { console.warn(e) }
-}
-
-// In case we leave the page during the wait time, we don't want it to look like the page hung
-// Note: this doesn't trigger a save
-let hangCheckTimeout
-window.addEventListener('beforeunload', (event) => {
-  if (hangCheckTimeout) {
-    clearTimeout(hangCheckTimeout)
-    hangCheckTimeout = null
-    try { localStorage.setItem('ga-maybe-hung', 'false') } catch (e) { console.warn(e) } // could fail if cache disabled
-  }
-})
-
-let prev
-const run = (opts = { force: false }) => {
-  // Cancel hang check since we have been able to restart so things must be fine
-  clearTimeout(hangCheckTimeout)
-  hangCheckTimeout = null
-  try { localStorage.setItem('ga-maybe-hung', 'false') } catch (e) { console.warn(e) }
-  const codeStr = prep(editor?.state?.doc?.toString() ?? '', e => {
-    clearOutput() // from previous run
-    prev = null // ensure we rerun next time
-    print(`Syntax: ${e}`)
-  })
-  if (!codeStr.trim()) return // either error or no code to run
-  if (!opts?.force && prev === codeStr) return // don't run again unless forced
-  prev = codeStr
-  clearOutput() // clear console output
-  clearView()
-  // after running for x seconds, declear good run and save
-  try { localStorage.setItem('ga-maybe-hung', 'true') } catch (e) { console.warn(e) }
-  const codeTranslated = translate(codeStr) // include this here as may hang too
-  // if this can execute after x seconds (the main thread isn't blocked) then safe code to save
-  hangCheckTimeout = setTimeout(resolveHangCheckAndSave, 5_000)
-  activeContexts.splice(0, activeContexts.length) // clear contexts between runs
-  deadContexts.splice(0, deadContexts.length)
-  let fn
-  try { fn = new Function(declerations + '\n' + codeTranslated) } catch (e) { print(`Eval: ${e}`) } /* eslint-disable-line no-new-func */
-  // Execute code here. Might get in an infinite loop and lock the session!
-  if (fn) try { print(`${fn.apply(context)}`) } catch (e) { print(`Runtime: ${e}`) }
-}
-
-
-////////////////////////////////////////////
-/// Codemirror
 
 const saveState = () => { // cache
   const json = JSON.stringify(editor.state.toJSON({ foldState }))
@@ -118,17 +18,134 @@ const saveState = () => { // cache
   console.info('saved')
 }
 
+/// /////////////////////////////////////////
+/// Script execution
 
+export class ContextManager {
+  constructor () {
+    this._contexts = []
+    this._dead = []
+  }
+
+  clear () {
+    this._contexts = []
+    this._dead = []
+  }
+
+  getAlgebra () { return this._contexts.at(-1) }
+
+  pushAlgebra (...args) {
+    // Ensure no duplicates of algebras for interoperability
+    const a = Algebra(...args)
+    let existing = this._contexts.find((x) => `${x.basis}` === `${a.basis}`)
+    if (!existing) existing = this._dead.find((x) => `${x.basis}` === `${a.basis}`)
+    if (!existing) existing = a
+    this._contexts.push(existing) // reference same object again if possible
+    return this._contexts.at(-1)
+  }
+
+  popAlgebra () {
+    this._dead.push(this._contexts.pop())
+    return this._contexts.at(-1)
+  }
+
+  map (name, ...args) {
+    const a = this.getAlgebra()
+    if (!a) throw Error('Must be in an Algebra context to use special syntax')
+    return a[name](...args)
+  }
+}
+
+// TODO:
+// console.log(result.map); // JSON source map.
+// var SourceMapConsumer = require("source-map").SourceMapConsumer;
+// var smc = new SourceMapConsumer(result.map);
+// console.log(smc.originalPositionFor({
+//   line: 3,
+//   column: 15
+// })); // { source: 'source.js',
+//      //   line: 2,
+//      //   column: 10,
+//      //   name: null }
+
+const outputEl = document.getElementById('output')
+const clearOutput = () => { outputEl.textContent = '' }
+const getOutput = () => outputEl.textContent
+const setOutput = (s) => outputEl.textContent = s
+const clearView = () => { view.innerHTML = '' }
+const print = (s, end = '\n') => { outputEl.textContent += `${s}` + end }
+
+// Edit declearations and context to determine default behaviour and avaliable variables/functions
+const cm = new ContextManager()
+const graph = (...args) => {
+  const g = cm.getAlgebra()?.graph(...args)
+  view.appendChild(g)
+  g.style.width = g.style.height = ''
+  return g
+}
+
+const context = { print, graph, context_manager: cm, _$: cm.map.bind(cm) } // expose these variables in script
+const declerations = `const{${Object.keys(context).join(',')}}=this;\ncontext_manager.pushAlgebra(2,0,1)` // default to 2D pga
+
+const resolveHangCheckAndSave = () => {
+  try {
+    saveState() // could fail if cache disabled, or cm does weird stuff
+    localStorage.setItem('ga-maybe-hung', 'false') // could fail if cache disabled
+  } catch (e) { console.warn(e) }
+}
+const cancelHangCheckTimeout = () => {
+  if (hangCheckTimeout) {
+    clearTimeout(hangCheckTimeout)
+    hangCheckTimeout = null
+    try { localStorage.setItem('ga-maybe-hung', 'false') } catch (e) { console.warn(e) } // could fail if cache disabled
+  }
+}
+
+// In case we leave the page during the wait time, we don't want it to look like the page hung
+// Note: this doesn't trigger a save
+let hangCheckTimeout
+window.addEventListener('beforeunload', e => { cancelHangCheckTimeout() })
+
+let prev
+const run = (opts = { force: false }) => {
+  const outputText = getOutput()
+  setOutput("...")
+  cancelHangCheckTimeout()  // if we are able to run then we didn't hang last time
+  // Cancel hang check since we have been able to restart so things must be fine
+  let didError = false
+  const codeStr = transpile(editor?.state?.doc?.toString() ?? '', e => {
+    clearOutput()
+    prev = null // ensure we rerun next time
+    setOutput(`Syntax: ${e}`)
+    didError = true
+  })?.code
+  if (didError) return  // handled already
+  if (!codeStr?.trim()) { setOutput('Nothing to run'); return }
+  if (!opts?.force && prev === codeStr) { setOutput(textContent); return } // don't run again unless forced
+  prev = codeStr
+  // if this can execute after x seconds (the main thread isn't blocked) then safe code to save
+  let fn
+  try { fn = new Function(declerations + '\n' + codeStr) } catch (e) { setOutput(`Eval: ${e}`); return } /* eslint-disable-line no-new-func */
+  // Execute code here. Might get in an infinite loop and lock the session!
+  // after running for x seconds, declear good run and save
+  try { localStorage.setItem('ga-maybe-hung', 'true') } catch (e) { console.warn(e) }
+  hangCheckTimeout = setTimeout(resolveHangCheckAndSave, 5_000)
+  clearOutput()
+  clearView()
+  cm.clear() // clear contexts between runs
+  if (fn) try { print(`${fn.apply(context)}`) } catch (e) { print(`Runtime: ${e}`) }
+}
+
+/// /////////////////////////////////////////
+/// Codemirror
 
 const evalPlugin = ViewPlugin.fromClass(class {
-  constructor() {
+  constructor () {
     this.w = new WaitTillUndisturbedFor(500)
     this.w.on('timeout', run)
   }
 
-  update (update) {
-    if (update.docChanged) this.w.disturb()
-  }
+  update (update) { if (update.docChanged) this.w.disturb() }
 })
 
 const TEMPLATE = `\
@@ -181,12 +198,12 @@ print("B = " + B);
   } else run()
 }
 
-////////////////////////////////////////////
+/// /////////////////////////////////////////
 /// Window logic
 
 // Mouse events for resizing the main view, code, and output panels
 {
-  const getWidth = () => document.body.clientWidth || document.documentElement.clientWidth || window.innerWidth;
+  const getWidth = () => document.body.clientWidth || document.documentElement.clientWidth || window.innerWidth
   const elV = document.getElementById('view')
   const elC = document.getElementById('code')
   let json
@@ -209,8 +226,8 @@ print("B = " + B);
   const elEd = document.getElementById('editor-div')
   const ddMd = new DragDetector(elMd) // view resize
   const ddEd = new DragDetector(elEd) // output resize
-  ddMd.on('dragging', e => { 
-    elV.style['flex-basis'] = (e.clientX - elV.clientLeft - elMd.clientWidth / 2) + 'px';
+  ddMd.on('dragging', e => {
+    elV.style['flex-basis'] = (e.clientX - elV.clientLeft - elMd.clientWidth / 2) + 'px'
     w.disturb()
   })
   ddEd.on('dragging', e => {
@@ -220,10 +237,10 @@ print("B = " + B);
 
   const dblClickMd = new DblClickDetector(elMd) // double click to snap resize view
   dblClickMd.on('dblclick', e => {
-    const minWidth = getWidth() * 0.33  // side 1/3
-    const initWidth = getWidth() * 0.47  // middle 1/2
+    const minWidth = getWidth() * 0.33 // side 1/3
+    const initWidth = getWidth() * 0.47 // middle 1/2
     if (view.clientWidth > initWidth + 2 || Math.abs(view.clientWidth - minWidth) < 2) elV.style['flex-basis'] = initWidth + 'px'
-    else elV.style['flex-basis'] = minWidth + 'px';  // else snap to smallest view size before the code window overlaps it
+    else elV.style['flex-basis'] = minWidth + 'px' // else snap to smallest view size before the code window overlaps it
     w.trigger()
   })
 }
