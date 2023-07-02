@@ -113,6 +113,11 @@ window.addEventListener('beforeunload', e => { cancelHangCheckTimeout() })
 const countNl = (s) => [...s.matchAll(/\n/g)].length
 // Measure number of lines needed for function decleration and other declerations added to source
 const SOURCE_OFFSET = countNl((new Function('$')).toString().split('$')[0]) + countNl(declerations) /* eslint-disable-line no-new-func */
+const printLocation = (line, col) => {
+  if (line) print(`On line ${line}`, '')
+  if (col) print(`, column ${col}`)
+}
+
 const withSourceLocation = (e, map, fn) => {
   // Get position in source file accounting for ast transformations and other added lines
   StackTrace.fromError(e).then(frames => {
@@ -152,9 +157,8 @@ const run = (opts = { force: false }) => {
   let fn
   try { fn = new Function(declerations + codeStr) } catch (e) { /* eslint-disable-line no-new-func */
     print(`${e.name}: ${e.message}`)
-    withSourceLocation(e, result?.map, (e, line, column) => {
-      if (line) print(`On line ${line}`, '')
-      if (column) print(` at column ${column}`)
+    withSourceLocation(e, result?.map, (e, line, col) => {
+      printLocation(line, col)
     })
     return
   }
@@ -165,14 +169,11 @@ const run = (opts = { force: false }) => {
   clearOutput()
   clearView()
   cm.clear() // clear contexts between runs
-  if (fn) {
-    try { print(`${fn.apply(context)}`) } catch (e) {
-      print(`${e.name}: ${e.message}`)
-      withSourceLocation(e, result?.map, (e, line, column) => {
-        if (line) print(`On line ${line}`, '')
-        if (column) print(` at column ${column}`)
-      })
-    }
+  try { print(`${fn.apply(context)}`) } catch (e) {
+    print(`${e.name}: ${e.message}`)
+    withSourceLocation(e, result?.map, (e, line, col) => {
+      printLocation(line, col)
+    })
   }
 }
 
@@ -186,6 +187,26 @@ const evalPlugin = ViewPlugin.fromClass(class {
   }
 
   update (update) { if (update.docChanged) this.w.disturb() }
+})
+
+const locDisplayPlugin = ViewPlugin.fromClass(class {
+  constructor (view) {
+    this.el = view.dom.appendChild(document.createElement('div'))
+    this.el.style.cssText =
+      'position: absolute; inset-block-end: 2px; inset-inline-end: 5px; font-family: monospace; opacity: 0.5'
+    this.el.className = 'cm-loc-display'
+  }
+
+  update (update) {
+    // get current position
+    if (update.view.hasFocus) {
+      const head = update.state.selection.main.head
+      const cursor = update.state.doc.lineAt(head)
+      const line = cursor.number
+      const col = head - cursor.from
+      this.el.textContent = `line ${line}, column ${col}`
+    } else this.el.textContent = ''
+  }
 })
 
 const TEMPLATE = `\
@@ -218,7 +239,7 @@ print("B = " + B);
 
 // Initalise codemirror
 {
-  const extensions = [basicSetup, javascript(), evalPlugin]
+  const extensions = [basicSetup, javascript(), evalPlugin, locDisplayPlugin]
   const parent = document.getElementById('code')
   let state
   try {
