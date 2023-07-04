@@ -83,3 +83,7 @@ a {
   font-size: 0.9em;
 }
 */
+
+.cm-gutters {
+  background-color: inherit !important;
+}
