@@ -272,14 +272,14 @@ print("B = " + B);
     const jsonStr = localStorage.getItem('ga-div-state') // could throw if cache disabled
     json = JSON.parse(jsonStr) // could throw if bad json
   } catch (e) { console.warn(e) }
-  if (json?.mainDiv && !isNaN(json.mainDiv)) elV.style['flex-basis'] = json.mainDiv * getWidth() + 'px'
-  if (json?.editorDiv && !isNaN(json.editorDiv)) elC.style['flex-basis'] = json.editorDiv * getWidth() + 'px'
+  if (json?.mainDiv && !isNaN(json.mainDiv)) elV.style['flex-basis'] = `${json.mainDiv}%`
+  if (json?.editorDiv && !isNaN(json.editorDiv)) elC.style['flex-basis'] = `${json.editorDiv}%`
 
   const w = new WaitTillUndisturbedFor(500)
   w.on('timeout', () => {
     if (!json) json = {}
-    json.mainDiv = parseFloat(elV.style['flex-basis']) / getWidth()
-    json.editorDiv = parseFloat(elC.style['flex-basis']) / getWidth()
+    json.mainDiv = parseFloat(elV.style['flex-basis'])
+    json.editorDiv = parseFloat(elC.style['flex-basis'])
     try { localStorage.setItem('ga-div-state', JSON.stringify(json)) } catch (e) { console.warn(e) }
   })
 
@@ -288,20 +288,21 @@ print("B = " + B);
   const ddMd = new DragDetector(elMd) // view resize
   const ddEd = new DragDetector(elEd) // output resize
   ddMd.on('dragging', e => {
-    elV.style['flex-basis'] = (e.clientX - elV.clientLeft - elMd.clientWidth / 2) + 'px'
+    elV.style['flex-basis'] = (e.clientX - elV.clientLeft - elMd.clientWidth / 2) * 100 / getWidth() + '%'
     w.disturb()
   })
   ddEd.on('dragging', e => {
-    elC.style['flex-basis'] = (e.clientY - elC.clientTop - elEd.clientHeight / 2) + 'px'
+    elC.style['flex-basis'] = (e.clientY - elC.clientTop - elEd.clientHeight / 2) * 100 / getWidth() + '%'
     w.disturb()
   })
 
   const dblClickMd = new DblClickDetector(elMd) // double click to snap resize view
   dblClickMd.on('dblclick', e => {
-    const minWidth = getWidth() * 0.33 // side 1/3
-    const initWidth = getWidth() * 0.47 // middle 1/2
-    if (view.clientWidth > initWidth + 2 || Math.abs(view.clientWidth - minWidth) < 2) elV.style['flex-basis'] = initWidth + 'px'
-    else elV.style['flex-basis'] = minWidth + 'px' // else snap to smallest view size before the code window overlaps it
+    const minWidth = 33 // middle 1/3
+    const initWidth = 47 // middle 1/2
+    const curWidth = parseFloat(elV.style['flex-basis'])
+    if (curWidth > initWidth || curWidth === minWidth) elV.style['flex-basis'] = `${initWidth}%`
+    else elV.style['flex-basis'] = `${minWidth}%` // else snap to smallest view size before the code window overlaps it
     w.trigger()
   })
 }
