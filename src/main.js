@@ -219,9 +219,9 @@ graph([
   0x008844,       // Set darker green
   A, "A",         // Render point A and label it.
   B, "B",
-  A & B, "A & B",
+  () => A & B, "A & B",
   0x4466AA,       // Blue
-  (A & B) ^ 1e1   // Y Intercept
+  () => (A & B) ^ 1e1   // Y Intercept
 ],{
   grid        : true, // Display a grid
   labels      : true, // Label the grid
