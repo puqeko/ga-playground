@@ -8,7 +8,7 @@ This is intended as a toy for helping get my head around [Geometric Algebra](htt
 
 Some nice features:
 
-* The value of the last expression is displayed in the output console by inserting a return statement.
+* The value of the last expression is displayed in the output console.
 * The script is re-evaluated automatically and progress is saved to your local browser cache incase the page accidentally reloads
 * Can use the `print` and `graph` functions to output multiple messages to the console and show multiple graphs respectively.
 
