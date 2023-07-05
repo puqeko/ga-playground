@@ -1,7 +1,8 @@
 import { EditorView, basicSetup } from 'codemirror'
+import { indentWithTab } from '@codemirror/commands'
 import { foldState } from '@codemirror/language'
 import { javascript } from '@codemirror/lang-javascript'
-import { ViewPlugin } from '@codemirror/view'
+import { ViewPlugin, keymap } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
 import * as StackTrace from 'stacktrace-js'
 import { SourceMapConsumer } from 'source-map'
@@ -148,6 +149,7 @@ const run = (opts = { force: false }) => {
     if (e.column) print(` at column ${e.column}`)
     didError = true
   })
+  console.log(result.code)
   if (didError) return // handled already
   const codeStr = result?.code
   if (!codeStr?.trim()) { setOutput('Nothing to run'); return }
@@ -239,7 +241,7 @@ print("B = " + B);
 
 // Initalise codemirror
 {
-  const extensions = [basicSetup, javascript(), evalPlugin, locDisplayPlugin]
+  const extensions = [basicSetup, javascript(), evalPlugin, locDisplayPlugin, keymap.of([indentWithTab])]
   const parent = document.getElementById('code')
   let state
   try {
