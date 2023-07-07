@@ -150,7 +150,7 @@ const run = (opts = { force: false }) => {
     if (e.column) print(` at column ${e.column}`)
     didError = true
   })
-  console.log(result.code)
+  // console.log(result.code)
   if (didError) return // handled already
   const codeStr = result?.code
   if (!codeStr?.trim()) { setOutput('Nothing to run'); return }
