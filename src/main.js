@@ -89,6 +89,7 @@ const context = { print, graph, context_manager: cm, _$: cm.map.bind(cm) } // ex
 const declerations = `\
 //# sourceURL=script.js
 const{${Object.keys(context).join(',')}}=this;
+const{${Object.getOwnPropertyNames(Math).join(',')}}=Math;
 context_manager.pushAlgebra(2,0,1);\n` // default to 2D pga, must have trailing newline
 
 const resolveHangCheckAndSave = () => {
