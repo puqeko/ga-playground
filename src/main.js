@@ -181,6 +181,67 @@ const run = (opts = { force: false }) => {
 }
 
 /// /////////////////////////////////////////
+/// Window logic
+
+// Mouse events for resizing the main view, code, and output panels
+{
+  const elV = document.getElementById('view')
+  const elC = document.getElementById('code')
+  let json
+  try {
+    const jsonStr = localStorage.getItem('ga-div-state') // could throw if cache disabled
+    json = JSON.parse(jsonStr) // could throw if bad json
+  } catch (e) { console.warn(e) }
+  if (json?.mainDiv && !isNaN(json.mainDiv)) elV.style['flex-basis'] = `${json.mainDiv}%`
+  if (json?.editorDiv && !isNaN(json.editorDiv)) elC.style['flex-basis'] = `${json.editorDiv}%`
+
+  const w = new WaitTillUndisturbedFor(500)
+  w.on('timeout', () => {
+    if (!json) json = {}
+    json.mainDiv = parseFloat(elV.style['flex-basis'])
+    json.editorDiv = parseFloat(elC.style['flex-basis'])
+    try { localStorage.setItem('ga-div-state', JSON.stringify(json)) } catch (e) { console.warn(e) }
+  })
+
+  const elMainDiv = document.getElementById('main-div')
+  const elEditDiv = document.getElementById('editor-div')
+  const ddMainDiv = new DragDetector(elMainDiv) // view resize
+  const ddEditDiv = new DragDetector(elEditDiv) // output resize
+  const getWidth = () => document.body.clientWidth || document.documentElement.clientWidth || window.innerWidth
+  const getHeight = () => document.body.clientHeight || document.documentElement.clientHeight || window.innerHeight
+  ddMainDiv.on('dragging', e => {
+    elV.style['flex-basis'] = (e.clientX - elV.clientLeft - elMainDiv.clientWidth / 2) * 100 / getWidth() + '%'
+    w.disturb()
+  })
+  ddEditDiv.on('dragging', e => {
+    elC.style['flex-basis'] = (e.clientY - elC.clientTop - elEditDiv.clientHeight / 2) * 100 / getHeight() + '%'
+    w.disturb()
+  })
+
+  const dblClickMd = new DblClickDetector(elMainDiv) // double click to snap resize view
+  dblClickMd.on('dblclick', e => {
+    const minWidth = 33 // middle 1/3
+    const initWidth = 47 // middle 1/2
+    const curWidth = parseFloat(elV.style['flex-basis'])
+    if (curWidth > initWidth || curWidth === minWidth) elV.style['flex-basis'] = `${initWidth}%`
+    else elV.style['flex-basis'] = `${minWidth}%` // else snap to smallest view size before the code window overlaps it
+    w.trigger()
+  })
+}
+
+// full window keyboard shortcuts (codemirror editor will have it's own)
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+    e.preventDefault()
+    run({ force: true }) // force
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault()
+    saveState()
+  }
+})
+
+/// /////////////////////////////////////////
 /// Codemirror
 
 const evalPlugin = ViewPlugin.fromClass(class {
@@ -261,63 +322,3 @@ print("B = " + B);
     try { localStorage.setItem('ga-maybe-hung', 'false') } catch (e) { console.warn(e) }
   } else run()
 }
-
-/// /////////////////////////////////////////
-/// Window logic
-
-// Mouse events for resizing the main view, code, and output panels
-{
-  const getWidth = () => document.body.clientWidth || document.documentElement.clientWidth || window.innerWidth
-  const elV = document.getElementById('view')
-  const elC = document.getElementById('code')
-  let json
-  try {
-    const jsonStr = localStorage.getItem('ga-div-state') // could throw if cache disabled
-    json = JSON.parse(jsonStr) // could throw if bad json
-  } catch (e) { console.warn(e) }
-  if (json?.mainDiv && !isNaN(json.mainDiv)) elV.style['flex-basis'] = `${json.mainDiv}%`
-  if (json?.editorDiv && !isNaN(json.editorDiv)) elC.style['flex-basis'] = `${json.editorDiv}%`
-
-  const w = new WaitTillUndisturbedFor(500)
-  w.on('timeout', () => {
-    if (!json) json = {}
-    json.mainDiv = parseFloat(elV.style['flex-basis'])
-    json.editorDiv = parseFloat(elC.style['flex-basis'])
-    try { localStorage.setItem('ga-div-state', JSON.stringify(json)) } catch (e) { console.warn(e) }
-  })
-
-  const elMd = document.getElementById('main-div')
-  const elEd = document.getElementById('editor-div')
-  const ddMd = new DragDetector(elMd) // view resize
-  const ddEd = new DragDetector(elEd) // output resize
-  ddMd.on('dragging', e => {
-    elV.style['flex-basis'] = (e.clientX - elV.clientLeft - elMd.clientWidth / 2) * 100 / getWidth() + '%'
-    w.disturb()
-  })
-  ddEd.on('dragging', e => {
-    elC.style['flex-basis'] = (e.clientY - elC.clientTop - elEd.clientHeight / 2) * 100 / getWidth() + '%'
-    w.disturb()
-  })
-
-  const dblClickMd = new DblClickDetector(elMd) // double click to snap resize view
-  dblClickMd.on('dblclick', e => {
-    const minWidth = 33 // middle 1/3
-    const initWidth = 47 // middle 1/2
-    const curWidth = parseFloat(elV.style['flex-basis'])
-    if (curWidth > initWidth || curWidth === minWidth) elV.style['flex-basis'] = `${initWidth}%`
-    else elV.style['flex-basis'] = `${minWidth}%` // else snap to smallest view size before the code window overlaps it
-    w.trigger()
-  })
-}
-
-// full window keyboard shortcuts (codemirror editor will have it's own)
-document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
-    e.preventDefault()
-    run({ force: true }) // force
-  }
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-    e.preventDefault()
-    saveState()
-  }
-})
