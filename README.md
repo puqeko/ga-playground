@@ -9,7 +9,7 @@ This is intended as a toy for helping get my head around [Geometric Algebra](htt
 Some nice features:
 
 * The value of the last expression is displayed in the output console.
-* The script is re-evaluated automatically and progress is saved to your local browser cache incase the page accidentally reloads
+* <kbd>Ctrl</kbd> + <kbd>R</kbd> (Run), <kbd>Ctrl</kbd> + <kbd>S</kbd> (Save)
 * Can use the `print` and `graph` functions to output multiple messages to the console and show multiple graphs respectively.
 
 Use `context_manager.pushAlgebra(...)` and `context_manager.popAlgebra()` to change the currently active Algebra 'mode'. They take the same arguments as the `Algebra` factory from `ganja.js` but there might be some support holes. The default is 2D PGA, equivilent to `Algebra(2, 0, 1)`. The current algebra object is accessiable via `context_manager.getAlgebra()` but direct access is probably not needed. This helps with the scoping and consistancy issues stated above but also helps with interoperability by ensuring each algebra produced by the factory is a singleton. This all probably comes at a slight performance cost that I am yet to care about.
