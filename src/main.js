@@ -244,14 +244,13 @@ document.addEventListener('keydown', (e) => {
 /// /////////////////////////////////////////
 /// Codemirror
 
-const evalPlugin = ViewPlugin.fromClass(class {
-  constructor () {
-    this.w = new WaitTillUndisturbedFor(500)
-    this.w.on('timeout', run)
-  }
-
-  update (update) { if (update.docChanged) this.w.disturb() }
-})
+// const autosavePlugin = ViewPlugin.fromClass(class {
+//   constructor () {
+//     this.w = new WaitTillUndisturbedFor(500)
+//     this.w.on('timeout', run)
+//   }
+//   update (update) { if (update.docChanged) this.w.disturb() }
+// })
 
 const locDisplayPlugin = ViewPlugin.fromClass(class {
   constructor (view) {
@@ -303,7 +302,7 @@ print("B = " + B);
 
 // Initalise codemirror
 {
-  const extensions = [basicSetup, javascript(), evalPlugin, locDisplayPlugin, keymap.of([indentWithTab])]
+  const extensions = [basicSetup, javascript(), locDisplayPlugin, keymap.of([indentWithTab])]
   const parent = document.getElementById('code')
   let state
   try {
